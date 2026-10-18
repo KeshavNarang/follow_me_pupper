@@ -83,6 +83,8 @@ def generate_launch_description():
         executable="spawner",
         arguments=[
             LaunchConfiguration("controller"),
+            "--param-file",
+            PathJoinSubstitution([ThisLaunchFileDir(), "speed_cap.yaml"]),
             "--controller-manager",
             "/controller_manager",
             "--controller-manager-timeout",
