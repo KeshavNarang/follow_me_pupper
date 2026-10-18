@@ -1,11 +1,11 @@
-"""Step 4: is something in the way, and which way around it? Pure functions, no ROS.
+"""Optional Step 6: is something in the way, and which way around it? Pure functions, no ROS.
 
 You write one function here, find_blocking_obstacle. The rest of the file is
-provided: read it, because Step 4's questions are about it.
+provided: read it, because Step 6's questions are about it.
 
 The one big idea
 ----------------
-The same one as Step 3: the bottom edge of a box is a distance sensor
+The same one as Step 4: the bottom edge of a box is a distance sensor
 (boxes.box_bottom). Everything in this file is built out of it. A box whose
 bottom edge sits low in the frame is close to the robot; one whose bottom
 edge sits up near the horizon is far away. (When does it lie to you? Anything
@@ -37,7 +37,7 @@ SIDE_SCORE_TIE = 0.25          # closer than this and the two sides count as eve
 def find_blocking_obstacle(target, others):
     """Offset of the nearest object standing between us and the target, or None.
 
-    Step 4 (avoid) -------------------------------------------------------------
+    Optional Step 6 (something in the way) -------------------------------------
     target:     the Detection2D we are chasing.
     others:     list of Detection2D: everything else in the frame (other
                 classes, confidence at least OBSTACLE_MIN_SCORE). May be empty.
@@ -48,9 +48,9 @@ def find_blocking_obstacle(target, others):
                 one with bottom 222 (beyond the target) -> None
     Used by:    follow_me.py (provided code) stores it in self.obstacle_pos;
                 your ready_to_avoid reads it.
-    Test:       python3 lab/test.py step4
+    Test:       python3 lab/test.py step6
     """
-    # ========== YOUR CODE HERE: Step 4: find_blocking_obstacle ==========
+    # ========== OPTIONAL — YOUR CODE HERE: Step 6: find_blocking_obstacle ==========
     # An object blocks only if all three hold:
     #   1. between us and the target: its bottom edge is lower in the image
     #      (bigger) than the target's;
@@ -60,7 +60,7 @@ def find_blocking_obstacle(target, others):
     # Of the ones that block, return the box_offset of the nearest (the
     # biggest bottom edge). None if nothing blocks.
     raise NotImplementedError
-    # ====================================================================
+    # ===============================================================================
 
 
 def box_left_fraction(detection):

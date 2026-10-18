@@ -1,20 +1,23 @@
 """Follow Me Pupper: the tracking state machine.
 
 The Pupper picks a target class out of /detections, walks up to it, and
-steers to keep it centred. You build it in three steps, and each one adds to
-the same machine:
+steers to keep it centred. You build it in steps, and each one adds to the
+same machine:
 
-    Step 2  Follow:       IDLE -> SEARCH <-> TRACK, the most centred target,
-                          a constant forward speed.
-    Step 3  Follow *me*:  stay on the same person (target_lock.pick_target)
-                          and stop at a polite distance (approach_speed).
-    Step 4  Avoid:        detour around something in the way (AVOID_TURN ->
-                          AVOID_PASS -> AVOID_RETURN, provided) -- you decide
-                          when one starts (ready_to_avoid).
+    Step 2  Follow:         IDLE -> SEARCH <-> TRACK, the most centred target,
+                            a constant forward speed.
+    Step 3  Follow *me*, specifically: stay on the same person
+                            (target_lock.pick_target).
+    Step 4  At a polite distance: stop short of them (approach_speed).
+    Optional Step 5  Follow me, very specifically: tell people apart by
+                            color too (all in target_lock.py).
+    Optional Step 6  Something in the way: detour around it (AVOID_TURN ->
+                            AVOID_PASS -> AVOID_RETURN, provided) -- you decide
+                            when one starts (ready_to_avoid).
 
-What you write here are the four methods marked YOUR CODE, plus the
-constants. The rest (ROS plumbing, the detour, logging) is provided: read it,
-don't rewrite it.
+What you write here are the methods marked YOUR CODE, plus the constants.
+The rest (ROS plumbing, the detour, logging) is provided: read it, don't
+rewrite it.
 
 Run it (see README.md for the full three-terminal setup):
 
@@ -37,19 +40,19 @@ import target_lock
 from boxes import box_bottom, box_offset, detection_class_id
 
 # --- Step 2: control constants ----------------------------------------------
+# TRACK_FORWARD_VEL is how fast Pupper walks. At about 0.5 m/s and above, the
+# walking policy switches from a trot to a gallop: that is when it runs.
 # ========== YOUR CODE HERE: Step 2: control constants ==========
 TIMEOUT = None            # s without a detection before we go searching
 SEARCH_YAW_VEL = None     # rad/s rotation speed while searching
-TRACK_FORWARD_VEL = None  # m/s forward speed while tracking (Step 3: the top speed)
+TRACK_FORWARD_VEL = None  # m/s forward speed while tracking (Step 4: the top speed)
 KP = None                 # rad/s of yaw per unit of box_offset
 # ===============================================================
 
-# --- Step 4: obstacle avoidance ---------------------------------------------
-# Off until Step 4: with it off, the robot walks straight at the target,
-# ignoring anything in between.
-# ========== YOUR CODE HERE: Step 4: switch obstacle avoidance on ==========
-ENABLE_OBSTACLE_AVOIDANCE = False  # Step 4: True
-# ==========================================================================
+# --- Optional Step 6: obstacle avoidance ------------------------------------
+# Off unless you do Optional Step 6: with it off, the robot walks straight at
+# the target, ignoring anything in between.
+ENABLE_OBSTACLE_AVOIDANCE = False  # Optional Step 6: True
 
 # The detour (provided): turn away, walk past, turn back. The two turns are
 # the same speed for the same time in opposite directions, so the robot comes
@@ -105,15 +108,15 @@ class StateMachineNode(Node):
 
         # What the target looked like last frame (process_detections sets these).
         self.target_pos = 0.0               # its box_offset, -0.5..+0.5
-        self.target_bottom = 0.0            # its box_bottom, px (Step 3)
+        self.target_bottom = 0.0            # its box_bottom, px (Step 4)
         self.last_detection_time = None     # when we last saw it; None = not yet
 
-        # Step 3: where our target was and what it looks like.
+        # Step 3: where our target was (Optional Step 5: and what it looks like).
         self.lock = target_lock.Lock()
 
-        # Step 4: the object blocking our way (its box_offset), or None when
-        # the path is clear; how much stuff the last frame had in each half of
-        # it, (left, right); and the detour's direction and clocks.
+        # Optional Step 6: the object blocking our way (its box_offset), or
+        # None when the path is clear; how much stuff the last frame had in
+        # each half of it, (left, right); and the detour's direction and clocks.
         self.obstacle_pos = None
         self.crowding = (0.0, 0.0)
         self.avoid_dir = 1.0
@@ -179,8 +182,8 @@ class StateMachineNode(Node):
     def detection_callback(self, msg):
         """One frame of detections (provided). ROS calls it about 10 times a second.
 
-        Your process_detections finds the target; the rest is Step 4's
-        bookkeeping: how crowded each half of the frame is, and whether
+        Your process_detections finds the target; the rest is Optional Step
+        6's bookkeeping: how crowded each half of the frame is, and whether
         something blocks the way to the target.
         """
         target = self.process_detections(msg.detections)
@@ -205,20 +208,20 @@ class StateMachineNode(Node):
     def process_detections(self, detections):
         """Find our target in this frame, and remember where it is.
 
-        Step 2 (follow), then Step 3 (follow *me*) --------------------------------
+        Step 2 (follow), then Steps 3 and 4 ---------------------------------------
         detections:  list of Detection2D, every object YOLO found in this frame,
                      of every class (see "What a detection looks like" in
                      boxes.py). May be empty.
         Returns:     the target's Detection2D, or None when this frame has no
-                     target (Step 3: or only strangers).
+                     target (Step 3: or nobody near where the target was).
         Sets:        when there is a target --
                        self.target_pos           box_offset(target)
                        self.last_detection_time  self.get_clock().now()
-                       self.target_bottom        box_bottom(target)  (Step 3)
+                       self.target_bottom        box_bottom(target)  (Step 4)
         Test:        on the robot. Put breakpoint() here and run
                      python3 lab/follow_me.py to see what arrives.
         """
-        # ========== YOUR CODE HERE: Steps 2 and 3: process_detections ==========
+        # ========== YOUR CODE HERE: Steps 2, 3 and 4: process_detections ==========
         # Step 2:
         #   1. targets = the detections whose detection_class_id(d) is
         #      self.target_class_id. None of them? Return None.
@@ -226,19 +229,19 @@ class StateMachineNode(Node):
         #   3. Set self.target_pos and self.last_detection_time, and return target.
         # Step 3: replace 2 with
         #      target = target_lock.pick_target(targets, self.lock)
-        #   return None if it is None (only strangers), else
-        #   target_lock.remember(self.lock, target); and in 3 also set
-        #   self.target_bottom = box_bottom(target).
+        #   return None if it is None (nobody near where the target was),
+        #   else target_lock.remember(self.lock, target).
+        # Step 4: in 3, also set self.target_bottom = box_bottom(target).
         raise NotImplementedError
-        # =======================================================================
+        # ==========================================================================
 
     # ======================================================== motion out
     def timer_callback(self):
         """One tick of the state machine (provided). A ROS timer calls it every 0.1 s.
 
         Your choose_state picks SEARCH or TRACK, and your motion_command says
-        how to move in it. A detour, once started (Step 4), runs on its own
-        clock until it hands back to TRACK.
+        how to move in it. A detour, once started (Optional Step 6), runs on
+        its own clock until it hands back to TRACK.
         """
         if not self.tracking_enabled:
             # Not tracking: stay idle and DON'T publish, so Karel commands
@@ -257,7 +260,7 @@ class StateMachineNode(Node):
             self.state = self.choose_state(seconds)
             if self.state == State.SEARCH:
                 # The robot is about to spin: where the target was means
-                # nothing now. What it looks like still does (Step 3).
+                # nothing now. What it looks like still does (Optional Step 5).
                 self.lock.position = None
             if self.state == State.TRACK and ENABLE_OBSTACLE_AVOIDANCE and self.ready_to_avoid(now):
                 self.start_avoiding(now)
@@ -289,33 +292,34 @@ class StateMachineNode(Node):
     def motion_command(self):
         """How to move in the current state: (yaw, forward).
 
-        Step 2 (follow), then Step 3 (distance) ---------------------------------
+        Step 2 (follow), then Step 4 (polite distance) --------------------------
         Reads:       self.state (State.SEARCH or State.TRACK), self.target_pos,
-                     and in Step 3 self.target_bottom.
+                     and in Step 4 self.target_bottom.
         Returns:     (yaw, forward), two floats:
                        yaw      rad/s, + turns LEFT (counter-clockwise)
                        forward  m/s, + walks forward
                      Mind the signs: target_pos is + when the target is on the
                      RIGHT, and turning right toward it needs a - yaw.
         """
-        # ========== YOUR CODE HERE: Steps 2 and 3: motion_command ==========
+        # ========== YOUR CODE HERE: Steps 2 and 4: motion_command ==========
         # Step 2:
         #   SEARCH: turn in place at SEARCH_YAW_VEL, toward the side the
         #           target was last seen on: right if self.target_pos > 0,
         #           otherwise left (also when it was never seen: 0.0).
         #   TRACK:  steer against the offset (yaw = -KP * self.target_pos)
         #           and walk at TRACK_FORWARD_VEL.
-        # Step 3: in TRACK, walk at
+        # Step 4: in TRACK, walk at
         #   target_lock.approach_speed(self.target_bottom, TRACK_FORWARD_VEL)
-        #   instead: in when far, stop at STOP_BOTTOM, back off when close.
+        #   instead: full speed when far, slowing to a stop at STOP_BOTTOM,
+        #   backing off when too close.
         raise NotImplementedError
         # ===================================================================
 
-    # ======================================================== Step 4: the detour
+    # ======================================================== Optional Step 6: the detour
     def ready_to_avoid(self, now):
         """Should TRACK hand over to a detour right now?
 
-        Step 4 (avoid) ---------------------------------------------------------
+        Optional Step 6 (something in the way) ---------------------------------
         now:         an rclpy Time, self.get_clock().now(). Seconds since the
                      last detour ended: (now - self.avoid_done_time).nanoseconds / 1e9
         Reads:       self.obstacle_pos (find_blocking_obstacle's answer),
@@ -323,7 +327,7 @@ class StateMachineNode(Node):
                      self.target_bottom.
         Returns:     bool: True to start a detour now, False to keep tracking.
         """
-        # ========== YOUR CODE HERE: Step 4: ready_to_avoid ==========
+        # ========== OPTIONAL — YOUR CODE HERE: Step 6: ready_to_avoid ==========
         # True only if all three hold:
         #   1. something blocks (self.obstacle_pos is not None);
         #   2. we are walking toward the target: approach_speed(...) > 0. (At
@@ -331,7 +335,7 @@ class StateMachineNode(Node):
         #   3. no detour ended in the last AVOID_COOLDOWN seconds. (Right after
         #      one, the obstacle is often still half in frame.)
         raise NotImplementedError
-        # ============================================================
+        # =======================================================================
 
     def start_avoiding(self, now):
         """Commit to a side and begin the detour (provided)."""

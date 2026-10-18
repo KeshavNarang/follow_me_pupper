@@ -1,8 +1,10 @@
 # Follow Me Pupper
 
-The Pupper finds an object with its camera, walks up to it and stops at a
-comfortable distance, stays on the *same* person when there are several, and
-steps around anything in the way. Everything runs on the robot; you watch it in a browser.
+The Pupper finds an object with its camera, stays on the *same* person when
+there are several, and walks up to them and stops at a comfortable distance.
+Two optional steps go further: telling people apart by the color of their
+clothes, and stepping around anything in the way. Everything runs on the
+robot; you watch it in a browser.
 
 This lab is self-contained: no API keys, no LLM, no voice. The `KarelPupper`
 tracking API (`begin_tracking()` / `end_tracking()`) is what the robot
@@ -59,8 +61,9 @@ python3 lab/follow_me.py --ros-args -p target:=person     # any COCO class
 Everything you write can be tested with no robot at all:
 
 ```bash
-python3 lab/test.py           # every step
+python3 lab/test.py           # Steps 2-4, the required lab
 python3 lab/test.py step2     # just Step 2 (or step3, step4)
+python3 lab/test.py step5     # Optional Step 5 (or step6)
 ```
 
 A check whose code you have not written yet is skipped (`--`), not failed. A
@@ -89,10 +92,10 @@ test to run.
 
 | File | What it does |
 |---|---|
-| `lab/follow_me.py` | The state machine (Steps 2–4): `process_detections`, `choose_state`, `motion_command`, `ready_to_avoid`. |
-| `lab/boxes.py` | Reading a detection: `box_offset` (Step 2), `box_bottom` (Step 3). |
-| `lab/target_lock.py` | Step 3: the stop distance (`approach_speed`) and staying on the same person (`pick_target`, `remember`). |
-| `lab/avoidance.py` | Step 4: `find_blocking_obstacle`; the rest (which way around) is provided, to read. |
+| `lab/follow_me.py` | The state machine (Steps 2–4): `process_detections`, `choose_state`, `motion_command`; `ready_to_avoid` (Optional Step 6). |
+| `lab/boxes.py` | Reading a detection: `box_offset` (Step 2), `box_bottom` (Step 4). |
+| `lab/target_lock.py` | Staying on the same person (Step 3: `pick_target`, `remember`), the stop distance (Step 4: `approach_speed`), and telling people apart by color (Optional Step 5). |
+| `lab/avoidance.py` | Optional Step 6: `find_blocking_obstacle`; the rest (which way around) is provided, to read. |
 | `lab/test.py` | Desk-side tests for all of it, one section per step. |
 
 Provided, in `robot/`:
@@ -134,7 +137,7 @@ parameter above.
   pixel thresholds in `avoidance.py` mean the same thing at any camera
   resolution.
 - Each detection also carries the mean color of its segmentation mask (in the
-  message's `id` field, as `"r,g,b"`) — what `target_lock.py` uses to tell
+  message's `id` field, as `"r,g,b"`) — what Optional Step 5 uses to tell
   people apart. The camera runs a fixed white balance (`camera_params.yaml`)
   so those colors do not drift as auto white balance hunts.
 

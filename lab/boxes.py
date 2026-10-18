@@ -15,7 +15,7 @@ FakeDetection with the same fields). The fields this lab uses:
     detection.bbox.size_y              box height, px
     detection.results[0].hypothesis.class_id   COCO class id as a string ("0" = person; robot/coco.txt)
     detection.results[0].hypothesis.score      confidence, 0..1
-    detection.id                       mean mask color "r,g,b", or "" (Step 3)
+    detection.id                       mean mask color "r,g,b", or "" (Optional Step 5)
 
 The box gives you its centre and size, not its corners: the edges are
 centre -/+ size / 2.
@@ -87,16 +87,16 @@ def box_bottom(detection):
     bottom edge sits in the image, the closer the object is. (It lies for
     anything not standing on the floor, and anything cut off by the frame.)
 
-    Step 3 (distance) ----------------------------------------------------------
+    Step 4 (polite distance) ---------------------------------------------------
     detection:  one Detection2D.
     Returns:    float, px: 0 at the top of the image, IMAGE_HEIGHT (572) at
                 the bottom. Bigger = closer. A box from y=200 to y=500
                 (centre 350, height 300) -> 500.0
     Used by:    target_lock.approach_speed (the stop distance), and
-                avoidance.py in Step 4.
-    Test:       python3 lab/test.py step3
+                avoidance.py in Optional Step 6.
+    Test:       python3 lab/test.py step4
     """
-    # ========== YOUR CODE HERE: Step 3: box_bottom ==========
+    # ========== YOUR CODE HERE: Step 4: box_bottom ==========
     # The box gives you its centre y and its height. Return the y of its
     # bottom edge (remember: y grows downward).
     raise NotImplementedError

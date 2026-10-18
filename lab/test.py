@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Desk-side tests for the whole lab -- no robot, no camera, no ROS needed.
 
-    python3 lab/test.py           # everything
+    python3 lab/test.py           # Steps 2-4, the required lab
     python3 lab/test.py step2     # Step 2: follow
-    python3 lab/test.py step3     # Step 3: follow *me*, at a polite distance
-    python3 lab/test.py step4     # Step 4: something in the way
+    python3 lab/test.py step3     # Step 3: follow *me*, specifically
+    python3 lab/test.py step4     # Step 4: follow me, at a polite distance
+    python3 lab/test.py step5     # Optional Step 5: follow me, very specifically
+    python3 lab/test.py step6     # Optional Step 6: something in the way
 
 Each scene is a few fake detections laid out like a real frame. A check whose
 code you have not written yet is skipped ("--"), not failed, so run it after
@@ -30,6 +32,7 @@ fm = load_follow_me()
 Node = fm.StateMachineNode
 State = fm.State
 
+# Shirt colors, for Optional Step 5.
 RED = (200, 40, 40)
 BLUE = (40, 60, 200)
 REDDISH = (185, 55, 50)   # the red shirt under slightly different light
@@ -142,6 +145,69 @@ def stop_bottom():
 
 
 def step3():
+    a = person(W / 2, 400)
+    check("position_distance from a detection to its own position is 0",
+          lambda: target_lock.position_distance(a, target_lock.box_position(a)), 0.0,
+          tol=POSITION_TOL, passes="0.0")
+    moved = person(W / 2 + 70, 400)
+    check("position_distance is in image fractions (70 px sideways = 0.1)",
+          lambda: target_lock.position_distance(moved, target_lock.box_position(a)), 0.1,
+          tol=POSITION_TOL, passes="hypot(70 / 700, 0) = 0.1")
+
+    check("remember stores the position (box_position)",
+          lambda: locked_on(a).position, lambda: target_lock.box_position(a),
+          passes="lock.position == (0.0, 0.437...)  (offset, centre y / 572)")
+
+    left, right = person(200, 400), person(W / 2 + 20, 400)
+    check("pick_target, new chase: the most centred person",
+          lambda: pick([left, right], Lock), right,
+          passes="the person at x=370, not the one at x=200")
+    off_centre = person(500, 400)
+    off_centre_next = person(530, 402)         # walked a little further right
+    bystander = person(370, 400)               # more centred, but far from us
+    check("pick_target: nearest to where the target was, not the most centred",
+          lambda: pick([bystander, off_centre_next], lambda: locked_on(off_centre)), off_centre_next,
+          passes="the person at x=530, 30 px from where we were, not the centred one at x=370")
+    me = person(W / 2, 400)
+    far_away = person(120, 380)
+    check("pick_target: nobody within LOCK_GATE of where the target was -> None",
+          lambda: pick([far_away], lambda: locked_on(me)), None,
+          passes="None (the target is gone; a bystander does not take over)")
+    near, nearer = person(W / 2 - 40, 400), person(W / 2 + 10, 400)
+    check("pick_target: of two people near where the target was, the nearer",
+          lambda: pick([near, nearer], lambda: locked_on(me)), nearer,
+          passes="the person 10 px away, not the one 40 px away")
+
+    def after_search():
+        lk = locked_on(me)
+        lk.position = None   # lost and searched: the spot is forgotten
+        return lk
+    centred = person(W / 2 + 30, 380)
+    check("pick_target after a search (no position): the most centred person again",
+          lambda: pick([far_away, centred], after_search), centred,
+          passes="the person at x=380")
+
+    # Wiring Step 3 into follow_me.py. Each check first runs the function it
+    # needs, so it is skipped until that function is written.
+    def gone():
+        lock = locked_on(me)
+        pick([far_away], lambda: lock)
+        return Node.process_detections(tracker(lock=lock), [far_away])
+    check("process_detections uses pick_target: only a far-off person in frame -> None",
+          gone, None,
+          passes="target = target_lock.pick_target(targets, self.lock), and None if it is None")
+
+    def remembered():
+        lock = Lock()
+        target_lock.remember(Lock(), me)
+        Node.process_detections(tracker(lock=lock), [me])
+        return lock.position
+    check("process_detections calls remember: the lock holds the target's position",
+          remembered, lambda: target_lock.box_position(me),
+          passes="target_lock.remember(self.lock, target)")
+
+
+def step4():
     box = FakeDetection(300, 200, 400, 500)
     check("box_bottom is the bottom edge (centre y + height / 2)",
           lambda: boxes.box_bottom(box), 500, tol=1e-6,
@@ -151,34 +217,54 @@ def step3():
           lambda: 0 < stop_bottom() <= H, True,
           passes="STOP_BOTTOM = <the px value you measured>, a number between 0 and 572")
     tol = target_lock.STOP_TOLERANCE
+    ramp = target_lock.SLOWDOWN_PX
     check("approach_speed at STOP_BOTTOM: stand still",
           lambda: target_lock.approach_speed(stop_bottom(), 0.3), 0.0, tol=SPEED_TOL,
           passes="0.0")
     check("approach_speed inside STOP_TOLERANCE: still stand still",
           lambda: target_lock.approach_speed(stop_bottom() + 0.5 * tol, 0.3), 0.0, tol=SPEED_TOL,
           passes=f"0.0 for a bottom edge {0.5 * tol:.1f} px past STOP_BOTTOM")
-    check("approach_speed far away: walk in at the cap (max_forward)",
+    check("approach_speed far away: walk in at the top speed (max_forward)",
           lambda: target_lock.approach_speed(stop_bottom() - 200, 0.3), 0.3, tol=SPEED_TOL,
-          passes="0.3 (KP_DISTANCE * 200 / 572 = 0.52, capped at 0.3)")
-    check("approach_speed a little far: proportional, KP_DISTANCE * error / 572",
-          lambda: target_lock.approach_speed(stop_bottom() - 40, 0.3),
-          target_lock.KP_DISTANCE * 40 / H, tol=SPEED_TOL,
-          passes=f"{target_lock.KP_DISTANCE * 40 / H:.3f} for a bottom edge 40 px short")
+          passes=f"0.3 (0.3 * 200 / {ramp:g} = {0.3 * 200 / ramp:.2f}, capped at 0.3)")
+    check("approach_speed a little far: proportional, max_forward * error / SLOWDOWN_PX",
+          lambda: target_lock.approach_speed(stop_bottom() - 40, 0.3), 0.3 * 40 / ramp, tol=SPEED_TOL,
+          passes=f"{0.3 * 40 / ramp:.3f} for a bottom edge 40 px short")
+    check("approach_speed scales with max_forward: twice the top speed, twice as fast",
+          lambda: target_lock.approach_speed(stop_bottom() - 40, 0.6), 0.6 * 40 / ramp, tol=SPEED_TOL,
+          passes=f"{0.6 * 40 / ramp:.3f} for 40 px short at max_forward 0.6")
     check("approach_speed too close: back away (negative)",
-          lambda: target_lock.approach_speed(stop_bottom() + 60, 0.3) < 0, True,
-          passes=f"{-target_lock.KP_DISTANCE * 60 / H:.3f} for a bottom edge 60 px past")
+          lambda: target_lock.approach_speed(stop_bottom() + 30, 0.3) < 0, True,
+          passes=f"{-0.3 * 30 / ramp:.3f} for a bottom edge 30 px past")
     check("approach_speed right on top of us: back away at most MAX_BACKUP_VEL",
-          lambda: target_lock.approach_speed(H, 0.3), -target_lock.MAX_BACKUP_VEL, tol=SPEED_TOL,
-          passes=f"-{target_lock.MAX_BACKUP_VEL} (clamped)")
+          lambda: target_lock.approach_speed(stop_bottom() + 200, 0.3), -target_lock.MAX_BACKUP_VEL,
+          tol=SPEED_TOL, passes=f"-{target_lock.MAX_BACKUP_VEL} (clamped)")
 
+    # Wiring Step 4 into follow_me.py.
+    me = person(W / 2, 400)
+    check("process_detections stores the target's box_bottom in self.target_bottom",
+          lambda: (boxes.box_bottom(me), processed([me]).target_bottom)[1], 400, tol=1e-6,
+          passes="self.target_bottom = box_bottom(target)")
+    check("motion_command TRACK at STOP_BOTTOM: stand still (approach_speed)",
+          lambda: (target_lock.approach_speed(stop_bottom(), 0.3),
+                   Node.motion_command(tracker(target_bottom=stop_bottom()))[1])[1], 0.0, tol=SPEED_TOL,
+          passes="target_lock.approach_speed(self.target_bottom, TRACK_FORWARD_VEL) -> 0.0")
+
+
+def colored_lock(det):
+    """A lock that has just been following `det`, color and all (uses your remember_color)."""
+    lock = locked_on(det)
+    target_lock.remember_color(lock, det)
+    return lock
+
+
+def pick_c(targets, lock_fn):
+    """pick_target_by_color's choice (the lock is built lazily, so skips work)."""
+    return target_lock.pick_target_by_color(targets, lock_fn())
+
+
+def step5():
     a = person(W / 2, 400, RED)
-    check("position_distance from a detection to its own position is 0",
-          lambda: target_lock.position_distance(a, target_lock.box_position(a)), 0.0,
-          tol=POSITION_TOL, passes="0.0")
-    moved = person(W / 2 + 70, 400, RED)
-    check("position_distance is in image fractions (70 px sideways = 0.1)",
-          lambda: target_lock.position_distance(moved, target_lock.box_position(a)), 0.1,
-          tol=POSITION_TOL, passes="hypot(70 / 700, 0) = 0.1")
     check("color_distance of the same shirt is 0",
           lambda: target_lock.color_distance(a, np.array(RED, float)), 0.0, tol=COLOR_TOL,
           passes="0.0")
@@ -189,86 +275,59 @@ def step3():
           lambda: target_lock.color_distance(a, None), None,
           passes="None when lock.color is None")
 
-    check("remember on first sight stores the color",
-          lambda: list(locked_on(a).color), list(RED),
+    check("remember_color on first sight stores the color",
+          lambda: list(colored_lock(a).color), list(RED),
           passes="lock.color == [200, 40, 40]")
-    check("remember stores the position (box_position)",
-          lambda: locked_on(a).position, lambda: target_lock.box_position(a),
-          passes="lock.position == (0.0, 0.699...)  (offset, bottom / 572)")
 
     def blended_error():
-        lk = locked_on(a)
-        target_lock.remember(lk, person(W / 2, 400, REDDISH))
+        lk = colored_lock(a)
+        target_lock.remember_color(lk, person(W / 2, 400, REDDISH))
         want = (1 - target_lock.REID_BLEND) * np.array(RED) + target_lock.REID_BLEND * np.array(REDDISH)
         return float(np.abs(lk.color - want).max())
-    check("remember after that blends the color by REID_BLEND",
+    check("remember_color after that blends the color by REID_BLEND",
           blended_error, 0.0, tol=COLOR_TOL,
           passes="0.9 * [200, 40, 40] + 0.1 * [185, 55, 50] = [198.5, 41.5, 41]")
 
     left, right = person(200, 400, BLUE), person(W / 2 + 20, 400, RED)
-    check("pick_target, new chase: the most centred person",
-          lambda: pick([left, right], Lock), right,
+    check("pick_target_by_color, new chase: the most centred person",
+          lambda: pick_c([left, right], Lock), right,
           passes="the person at x=370, not the one at x=200")
     me = person(W / 2, 400, RED)
     me_next = person(W / 2 + 15, 402, REDDISH)
     far_red = person(100, 300, RED)
-    check("pick_target: nearest to the last position wins, even over a better color far away",
-          lambda: pick([far_red, me_next], lambda: locked_on(me)), me_next,
+    check("pick_target_by_color: nearest to the last position wins, even over a better color far away",
+          lambda: pick_c([far_red, me_next], lambda: colored_lock(me)), me_next,
           passes="the reddish person 15 px from where we were")
     stranger_here = person(W / 2 + 10, 400, BLUE)
-    check("pick_target: a stranger alone in our spot does not steal the lock",
-          lambda: pick([stranger_here], lambda: locked_on(me)), None,
+    check("pick_target_by_color: a stranger alone in our spot does not steal the lock",
+          lambda: pick_c([stranger_here], lambda: colored_lock(me)), None,
           passes="None (blue is too far from red)")
     crossing_me = person(W / 2 + 25, 400, REDDISH)
     crossing_them = person(W / 2 - 10, 400, BLUE)   # nearer to where we were
-    check("pick_target: two people crossing, the nearer one a stranger: ours wins",
-          lambda: pick([crossing_them, crossing_me], lambda: locked_on(me)), crossing_me,
+    check("pick_target_by_color: two people crossing, the nearer one a stranger: ours wins",
+          lambda: pick_c([crossing_them, crossing_me], lambda: colored_lock(me)), crossing_me,
           passes="the reddish one")
     elsewhere = person(120, 350, REDDISH)
-    check("pick_target: stranger in our spot, us elsewhere: re-acquire us by color",
-          lambda: pick([stranger_here, elsewhere], lambda: locked_on(me)), elsewhere,
+    check("pick_target_by_color: stranger in our spot, us elsewhere: re-acquire us by color",
+          lambda: pick_c([stranger_here, elsewhere], lambda: colored_lock(me)), elsewhere,
           passes="the reddish person at x=120")
 
     def after_search():
-        lk = locked_on(me)
+        lk = colored_lock(me)
         lk.position = None   # lost and searched: the spot is forgotten, the color is not
         return lk
     back = person(600, 350, REDDISH)
-    check("pick_target after a search (no position): re-acquire by color anywhere",
-          lambda: pick([person(300, 380, BLUE), back], after_search), back,
+    check("pick_target_by_color after a search (no position): re-acquire by color anywhere",
+          lambda: pick_c([person(300, 380, BLUE), back], after_search), back,
           passes="the reddish person at x=600")
     no_color_me = person(W / 2, 400)
     a2, b2 = person(W / 2 + 10, 400), person(W / 2 - 40, 400)
-    check("pick_target with no masks: nearest position decides",
-          lambda: pick([b2, a2], lambda: locked_on(no_color_me)), a2,
+    check("pick_target_by_color with no masks: nearest position decides",
+          lambda: pick_c([b2, a2], lambda: colored_lock(no_color_me)), a2,
           passes="the colorless person 10 px away, not the one 40 px away")
 
-    # Wiring Step 3 into follow_me.py. Each check first runs the function it
-    # needs, so it is skipped until that function is written.
-    def only_stranger():
-        lock = locked_on(me)
-        pick([stranger_here], lambda: lock)
-        return Node.process_detections(tracker(lock=lock), [stranger_here])
-    check("process_detections uses pick_target: only a stranger in frame -> None",
-          only_stranger, None,
-          passes="target = target_lock.pick_target(targets, self.lock), and None if it is None")
-    check("process_detections stores the target's box_bottom in self.target_bottom",
-          lambda: (boxes.box_bottom(me), processed([me]).target_bottom)[1], 400, tol=1e-6,
-          passes="self.target_bottom = box_bottom(target)")
-    check("motion_command TRACK at STOP_BOTTOM: stand still (approach_speed)",
-          lambda: (target_lock.approach_speed(stop_bottom(), 0.3),
-                   Node.motion_command(tracker(target_bottom=stop_bottom()))[1])[1], 0.0, tol=SPEED_TOL,
-          passes="target_lock.approach_speed(self.target_bottom, TRACK_FORWARD_VEL) -> 0.0")
 
-
-def step4():
-    def enabled():
-        if not fm.ENABLE_OBSTACLE_AVOIDANCE:
-            raise NotImplementedError("ENABLE_OBSTACLE_AVOIDANCE is still False")
-        return True
-    check("ENABLE_OBSTACLE_AVOIDANCE is switched on", enabled, True,
-          passes="ENABLE_OBSTACLE_AVOIDANCE = True")
-
+def step6():
     # The person we are chasing: mid-frame, bottom edge at 272.
     target = person(W / 2, H - 300)
     beyond = FakeDetection(W / 2 - 40, 80, W / 2 + 40, H - 350)
@@ -317,9 +376,13 @@ def step4():
 
 SECTIONS = {
     "step2": ("Step 2 - follow", step2),
-    "step3": ("Step 3 - follow me, at a polite distance", step3),
-    "step4": ("Step 4 - something in the way", step4),
+    "step3": ("Step 3 - follow me, specifically", step3),
+    "step4": ("Step 4 - follow me, at a polite distance", step4),
+}
+OPTIONAL_SECTIONS = {
+    "step5": ("Optional Step 5 - follow me, very specifically", step5),
+    "step6": ("Optional Step 6 - something in the way", step6),
 }
 
 if __name__ == "__main__":
-    run(SECTIONS, "lab/test.py")
+    run(SECTIONS, "lab/test.py", optional=OPTIONAL_SECTIONS)

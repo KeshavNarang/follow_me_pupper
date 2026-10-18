@@ -94,18 +94,21 @@ def check(name, got, want=True, tol=None, passes=""):
         print(f"         passes, e.g.: {passes}")
 
 
-def run(sections, script):
-    """Run the named sections (all of them with no argument), then summarize.
+def run(sections, script, optional=None):
+    """Run the named sections (all required ones with no argument), then summarize.
 
-    ``sections`` maps a section name to (title, function).
+    ``sections`` and ``optional`` map a section name to (title, function).
+    Optional sections only run when named.
     """
+    optional = optional or {}
+    every = {**sections, **optional}
     wanted = sys.argv[1:] or list(sections)
-    unknown = [w for w in wanted if w not in sections]
+    unknown = [w for w in wanted if w not in every]
     if unknown:
-        print(f"Unknown section {unknown[0]!r}. Choose from: {', '.join(sections)}")
+        print(f"Unknown section {unknown[0]!r}. Choose from: {', '.join(every)}")
         raise SystemExit(2)
     for key in wanted:
-        title, fn = sections[key]
+        title, fn = every[key]
         print(f"{title}  (python3 {script} {key})")
         fn()
         print()
@@ -117,6 +120,9 @@ def run(sections, script):
         print(summary + " Keep going!")
         raise SystemExit(1)
     print(f"All {PASS} checks passed. Take it to the robot.")
+    left = [k for k in optional if k not in wanted]
+    if not sys.argv[1:] and left:
+        print("Optional steps: " + ", ".join(f"python3 {script} {k}" for k in left))
 
 
 class FakeTime:
