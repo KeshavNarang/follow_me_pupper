@@ -46,7 +46,7 @@ import numpy as np
 # ========== YOUR CODE HERE: Step 2: control constants ==========
 TIMEOUT = 1.0            # s without a detection before we go searching
 SEARCH_YAW_VEL = 1.0     # rad/s rotation speed while searching
-TRACK_FORWARD_VEL = 0.3  # m/s forward speed while tracking (Step 4: the top speed)
+TRACK_FORWARD_VEL = 1.0  # m/s forward speed while tracking (Step 4: the top speed)
 KP = 5.0                 # rad/s of yaw per unit of box_offset
 # ===============================================================
 
